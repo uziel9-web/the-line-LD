@@ -198,33 +198,6 @@
     }
     .btn:active { transform: translateY(1px); }
 
-    /* Secondary action — phosphor-green link with an arrow.
-       Deliberately brighter than the earlier muted take; that
-       one read as disabled. Now it reads as "tap me" without
-       competing with the primary CTA's filled-border weight. */
-    .secondary {
-      font-size: clamp(13px, 3.6vw, 16px);
-      color: var(--phosphor);
-      text-decoration: underline;
-      text-underline-offset: 4px;
-      text-decoration-thickness: 1px;
-      letter-spacing: 0.1em;
-      text-shadow: 0 0 6px rgba(110, 230, 120, 0.35);
-      display: inline-flex;
-      align-items: baseline;
-      gap: 6px;
-      padding: 6px 4px;
-    }
-    .secondary .arrow {
-      font-size: 0.95em;
-      transition: transform 120ms ease;
-    }
-    .secondary:hover,
-    .secondary:focus-visible {
-      color: var(--phosphor-bright);
-      outline: none;
-    }
-    .secondary:hover .arrow { transform: translateX(3px); }
 
     /* Footer — app name + copyright. Lives at the very bottom,
        muted, same font stack. */
@@ -274,28 +247,20 @@
 
     <div class="actions">
       <!--
-        Primary CTA. Point this at the Play Console Internal
-        Testing opt-in URL (Play Console → The Line → Testing →
-        Internal testing → Testers tab → "Copy link"). Until the
-        real URL is pasted in, the button is disabled (see data-
-        href and JS below).
+        Single CTA. The landing page is only ever seen by
+        non-testers — anyone who was already added in Play
+        Console has the app installed and never hits this URL.
+        So the page's one job is to collect tester-access
+        requests. `mailto:` keeps the flow zero-backend: the
+        visitor's default mail app opens with a pre-filled
+        message to Uzi asking to be added to the internal-
+        testing list. Replace the mailto with a Formspree /
+        Firebase Function endpoint when the access-request
+        flow grows into something more automated.
       -->
-      <a class="btn" id="joinBtn"
-         data-href="https://play.google.com/apps/internaltest/4701381554798132322"
-         href="#" role="button">Join the Beta</a>
-
-      <!--
-        Secondary. For visitors who aren't on the tester list,
-        the page-wide idea is a short form that emails Uzi; for
-        now, a plain mailto so there's zero backend. Replace
-        with a Formspree / Firebase Function endpoint when the
-        tester-request flow is built out.
-      -->
-      <a class="secondary"
-         href="mailto:uzi.menetzir@gmail.com?subject=Join%20The%20Line%20beta&body=Hi%20Uzi%2C%0A%0AI%27d%20like%20to%20try%20The%20Line.%0A%0AGoogle%20account%20email%20(so%20you%20can%20add%20me%20to%20the%20tester%20list)%3A%0A%0A%0AName%3A%0A%0ACheers">
-        Email us to request an invite
-        <span class="arrow" aria-hidden="true">→</span>
-      </a>
+      <a class="btn" id="inviteBtn"
+         href="mailto:uzi.menetzir@gmail.com?subject=Request%20access%20to%20The%20Line&body=Hi%20Uzi%2C%0A%0AI%27d%20like%20to%20try%20The%20Line.%0A%0AGoogle%20account%20email%20(so%20you%20can%20add%20me%20to%20the%20internal-testing%20list)%3A%0A%0A%0AName%3A%0A%0ACheers"
+         role="button">Request an Invite</a>
     </div>
   </main>
 
@@ -403,30 +368,11 @@
       });
     })();
 
-    /*
-     * CTA wiring. The button is disabled (falls back to a mailto)
-     * until you paste the real Play Console Internal Testing opt-in
-     * URL into data-href. Doing it this way means the HTML stays
-     * valid out of the box — a "coming soon" state is visible
-     * rather than a dead Play Store link.
-     */
-    (function () {
-      const btn = document.getElementById("joinBtn");
-      if (!btn) return;
-      const url = (btn.getAttribute("data-href") || "").trim();
-      if (url) {
-        btn.setAttribute("href", url);
-        return;
-      }
-      // No URL yet — make the primary button a soft "not yet"
-      // state that explains itself on tap rather than 404ing.
-      btn.setAttribute("href", "javascript:void(0)");
-      btn.addEventListener("click", function (e) {
-        e.preventDefault();
-        btn.textContent = "Beta opens soon";
-        btn.style.opacity = "0.75";
-      });
-    })();
+    // (The Play Store opt-in CTA was removed — the landing page is
+    // only ever seen by non-testers, for whom that button dead-
+    // ended on a Play Store "not available" screen. The single
+    // remaining CTA is the `mailto:` on `#inviteBtn`, which the
+    // browser handles natively; no JS needed.)
   </script>
 </body>
 </html>
