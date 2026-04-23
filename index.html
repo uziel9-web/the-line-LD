@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <title>The Line — Follow the line. Someone is waiting.</title>
+  <meta name="description" content="The Line is a real-time text call. No send button. Follow the line." />
+  <!-- Open Graph for when the invite SMS link gets previewed in iMessage / WhatsApp. -->
+  <meta property="og:title" content="The Line" />
+  <meta property="og:description" content="Follow the line. Someone is waiting." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://uziel9-web.github.io/the-line/" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><circle cx=%2232%22 cy=%2232%22 r=%2224%22 fill=%22%230D1F14%22 stroke=%22%236EE678%22 stroke-width=%222%22/><circle cx=%2232%22 cy=%2232%22 r=%226%22 fill=%22%236EE678%22/></svg>" />
+  <style>
+    /*
+     * Matrix / CRT terminal aesthetic, mirrored from the app's
+     * line_bar.dart and line_crt_shell.dart palettes:
+     *   - _routableColor:  #6EDF88 (mid phosphor)
+     *   - _leadingColor:   #B6FFB6 (bright phosphor)
+     *   - _mutedColor:     #5A6F62 (dim phosphor)
+     *   - bar background:  #0C120E
+     * Keeping the hexes in lockstep with the app means a user
+     * landing here and then installing the app feels like the
+     * same product.
+     */
+    :root {
+      --bg: #000;
+      --phosphor: #6EDF88;
+      --phosphor-bright: #B6FFB6;
+      --phosphor-dim: #5A6F62;
+      --phosphor-glow: rgba(110, 230, 120, 0.6);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      width: 100%;
+      background: var(--bg);
+      color: var(--phosphor-bright);
+      font-family: "SF Mono", "Menlo", "Consolas", "Courier New", monospace;
+      overflow: hidden;
+      /* Respect iPhone notch + Android cutout. */
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+
+    /* Matrix code rain canvas. Fixed, full-viewport, sits behind
+       everything at low opacity so the foreground text is the
+       focal point and the rain reads as atmosphere rather than
+       content. */
+    #rain {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      opacity: 0.55;
+    }
+
+    /* Subtle CRT scanlines layered over the whole viewport. Pure
+       CSS — a repeating linear-gradient of 1px black lines every
+       3px. Reads as a cathode raster without hurting battery. */
+    .scanlines {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0) 0px,
+        rgba(0, 0, 0, 0) 2px,
+        rgba(0, 0, 0, 0.25) 3px,
+        rgba(0, 0, 0, 0.25) 3px
+      );
+      mix-blend-mode: multiply;
+    }
+
+    /* Outer container — centers the hero block vertically and
+       keeps it away from the edges on small screens. */
+    main {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 24px 48px;
+      text-align: center;
+    }
+
+    /* The wordmark. The space between THE and LINE is collapsed
+       into a thin vertical bar so the two words read as one
+       terminal command. */
+    .wordmark {
+      font-size: clamp(32px, 8vw, 56px);
+      font-weight: 700;
+      letter-spacing: 0.28em;
+      color: var(--phosphor-bright);
+      text-shadow:
+        0 0 8px var(--phosphor-glow),
+        0 0 22px rgba(110, 230, 120, 0.35);
+      margin-bottom: 48px;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35em;
+    }
+    .wordmark .divider {
+      display: inline-block;
+      width: 2px;
+      height: 0.85em;
+      background: var(--phosphor);
+      box-shadow: 0 0 6px var(--phosphor-glow);
+      opacity: 0.7;
+    }
+
+    /* Primary phrase — "Follow the line." Big, bright, the one
+       line a visitor definitely reads. */
+    .tagline {
+      font-size: clamp(24px, 6vw, 36px);
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      color: var(--phosphor-bright);
+      text-shadow: 0 0 10px var(--phosphor-glow);
+      max-width: 14em;
+      line-height: 1.25;
+      margin-bottom: 12px;
+    }
+
+    /* Subtitle — "Someone is waiting." Quieter, dimmer, below. */
+    .subtitle {
+      font-size: clamp(14px, 3.5vw, 18px);
+      font-weight: 400;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--phosphor);
+      opacity: 0.85;
+      text-shadow: 0 0 6px var(--phosphor-glow);
+      margin-bottom: 56px;
+    }
+
+    /* Blinking cursor that follows the subtitle — same visual
+       vocabulary as the CRT caret in the app. */
+    .subtitle .caret {
+      display: inline-block;
+      width: 0.6ch;
+      height: 1em;
+      margin-left: 0.35ch;
+      vertical-align: text-bottom;
+      background: var(--phosphor);
+      animation: caretBlink 1.1s steps(2, end) infinite;
+      box-shadow: 0 0 5px var(--phosphor-glow);
+    }
+    @keyframes caretBlink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0; }
+    }
+
+    /* Primary action — "JOIN THE BETA". Terminal-style button
+       that reads as a command you can type. Uses a phosphor
+       border rather than a filled background so it sits inside
+       the CRT without breaking the aesthetic. */
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      align-items: center;
+    }
+    .btn {
+      display: inline-block;
+      padding: 14px 28px;
+      font-family: inherit;
+      font-size: clamp(14px, 4vw, 16px);
+      font-weight: 600;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      text-decoration: none;
+      color: var(--phosphor-bright);
+      background: transparent;
+      border: 1px solid var(--phosphor);
+      border-radius: 2px;
+      box-shadow:
+        0 0 0 1px rgba(110, 230, 120, 0.15) inset,
+        0 0 14px rgba(110, 230, 120, 0.25);
+      text-shadow: 0 0 6px var(--phosphor-glow);
+      transition: background 120ms linear, box-shadow 120ms linear,
+        transform 80ms linear;
+      cursor: pointer;
+    }
+    .btn:hover, .btn:focus-visible {
+      background: rgba(110, 230, 120, 0.12);
+      box-shadow:
+        0 0 0 1px rgba(110, 230, 120, 0.35) inset,
+        0 0 22px rgba(110, 230, 120, 0.45);
+      outline: none;
+    }
+    .btn:active { transform: translateY(1px); }
+
+    /* Secondary action — underlined muted-phosphor link. No
+       border, no chrome; reads as a plain terminal link. */
+    .secondary {
+      font-size: clamp(12px, 3.2vw, 14px);
+      color: var(--phosphor-dim);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      letter-spacing: 0.08em;
+    }
+    .secondary:hover { color: var(--phosphor); }
+
+    /* Footer — app name + copyright. Lives at the very bottom,
+       muted, same font stack. */
+    footer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--phosphor-dim);
+      text-align: center;
+      z-index: 1;
+    }
+
+    /* Reduce motion for accessibility — a user who has told the
+       OS to reduce motion gets a static scene (no rain, no
+       blinking caret). */
+    @media (prefers-reduced-motion: reduce) {
+      #rain { display: none; }
+      .subtitle .caret { animation: none; opacity: 1; }
+    }
+
+    /* Small screens (≤ 360px) tighten spacing so the hero fits
+       above the address bar on a one-handed phone. */
+    @media (max-width: 360px) {
+      .wordmark { margin-bottom: 32px; }
+      .subtitle { margin-bottom: 36px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Code rain sits behind the hero; drawn in JS on a canvas. -->
+  <canvas id="rain" aria-hidden="true"></canvas>
+
+  <main>
+    <h1 class="wordmark" aria-label="The Line">
+      THE<span class="divider" aria-hidden="true"></span>LINE
+    </h1>
+
+    <p class="tagline">Follow the line.</p>
+    <p class="subtitle">
+      Someone is waiting<span class="caret" aria-hidden="true"></span>
+    </p>
+
+    <div class="actions">
+      <!--
+        Primary CTA. Point this at the Play Console Internal
+        Testing opt-in URL (Play Console → The Line → Testing →
+        Internal testing → Testers tab → "Copy link"). Until the
+        real URL is pasted in, the button is disabled (see data-
+        href and JS below).
+      -->
+      <a class="btn" id="joinBtn"
+         data-href="https://play.google.com/apps/internaltest/4701381554798132322"
+         href="#" role="button">Join the Beta</a>
+
+      <!--
+        Secondary. For visitors who aren't on the tester list,
+        the page-wide idea is a short form that emails Uzi; for
+        now, a plain mailto so there's zero backend. Replace
+        with a Formspree / Firebase Function endpoint when the
+        tester-request flow is built out.
+      -->
+      <a class="secondary"
+         href="mailto:uzi.menetzir@gmail.com?subject=Join%20The%20Line%20beta&body=Hi%20Uzi%2C%0A%0AI%27d%20like%20to%20try%20The%20Line.%0A%0AGoogle%20account%20email%20(so%20you%20can%20add%20me%20to%20the%20tester%20list)%3A%0A%0A%0AName%3A%0A%0ACheers">
+        Not on the list? Request access.
+      </a>
+    </div>
+  </main>
+
+  <div class="scanlines" aria-hidden="true"></div>
+
+  <footer>The Line © 2026</footer>
+
+  <script>
+    /*
+     * Canvas-based Matrix code rain.
+     * - Katakana-like glyph set plus Latin + numerals so it reads
+     *   right-to-left on LTR screens without looking out of place
+     *   if the rendering happens to sit on a word.
+     * - Semi-transparent black fill every tick creates the trailing
+     *   afterglow behind each falling column.
+     * - The lead glyph per column uses the bright phosphor; everything
+     *   behind it uses the dimmer phosphor. Classic Matrix look.
+     * - Respects prefers-reduced-motion by bailing out early (see
+     *   CSS: #rain { display: none } under the query).
+     */
+    (function () {
+      const canvas = document.getElementById("rain");
+      if (!canvas) return;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const glyphs = "アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲンABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".split("");
+      const fontSize = 16;
+      let columns = 0;
+      let drops = [];
+
+      function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        columns = Math.floor(canvas.width / fontSize);
+        drops = Array.from({ length: columns }, function () {
+          // Stagger initial positions so columns don't all start at the top.
+          return Math.floor(Math.random() * (canvas.height / fontSize));
+        });
+      }
+
+      function draw() {
+        // Afterglow: fill the whole canvas with low-alpha black.
+        ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.font = fontSize + "px SF Mono, Menlo, Consolas, monospace";
+
+        for (let i = 0; i < columns; i++) {
+          const glyph = glyphs[Math.floor(Math.random() * glyphs.length)];
+          const x = i * fontSize;
+          const y = drops[i] * fontSize;
+
+          // Leading glyph = brighter phosphor so the rain has a head.
+          ctx.fillStyle = "rgba(182, 255, 182, 0.95)";
+          ctx.fillText(glyph, x, y);
+
+          // Wrap + randomise reset so columns don't all cycle in unison.
+          if (y > canvas.height && Math.random() > 0.975) {
+            drops[i] = 0;
+          }
+          drops[i] += 1;
+
+          // After writing the head, overpaint the previous head as
+          // dim phosphor so subsequent frames fade it into the
+          // afterglow. This is a cheap way to get the gradient
+          // without tracking each glyph individually.
+          ctx.fillStyle = "rgba(110, 230, 120, 0.65)";
+          ctx.fillText(glyph, x, y - fontSize);
+        }
+      }
+
+      let rafHandle = null;
+      let lastTick = 0;
+      const tickMs = 55; // ~18 fps — enough motion, low battery.
+
+      function loop(ts) {
+        if (!lastTick || ts - lastTick >= tickMs) {
+          lastTick = ts;
+          draw();
+        }
+        rafHandle = requestAnimationFrame(loop);
+      }
+
+      const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+      if (motionQuery.matches) {
+        // Bail out silently — CSS also hides the canvas.
+        return;
+      }
+
+      resize();
+      rafHandle = requestAnimationFrame(loop);
+
+      window.addEventListener("resize", resize);
+      document.addEventListener("visibilitychange", function () {
+        // Pause the rain when the tab is backgrounded — keeps
+        // the page friendly on low-power devices.
+        if (document.hidden && rafHandle) {
+          cancelAnimationFrame(rafHandle);
+          rafHandle = null;
+        } else if (!document.hidden && !rafHandle) {
+          rafHandle = requestAnimationFrame(loop);
+        }
+      });
+    })();
+
+    /*
+     * CTA wiring. The button is disabled (falls back to a mailto)
+     * until you paste the real Play Console Internal Testing opt-in
+     * URL into data-href. Doing it this way means the HTML stays
+     * valid out of the box — a "coming soon" state is visible
+     * rather than a dead Play Store link.
+     */
+    (function () {
+      const btn = document.getElementById("joinBtn");
+      if (!btn) return;
+      const url = (btn.getAttribute("data-href") || "").trim();
+      if (url) {
+        btn.setAttribute("href", url);
+        return;
+      }
+      // No URL yet — make the primary button a soft "not yet"
+      // state that explains itself on tap rather than 404ing.
+      btn.setAttribute("href", "javascript:void(0)");
+      btn.addEventListener("click", function (e) {
+        e.preventDefault();
+        btn.textContent = "Beta opens soon";
+        btn.style.opacity = "0.75";
+      });
+    })();
+  </script>
+</body>
+</html>
